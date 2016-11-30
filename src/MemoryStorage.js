@@ -71,6 +71,8 @@ export default class MemoryStorage{
 
     // release and delete message
     release(msg_id){
-        return this.msgs[msg_id];
+        msg = this.msgs[msg_id];
+        delete this.msgs[msg_id];
+        return msg;
     }
 }

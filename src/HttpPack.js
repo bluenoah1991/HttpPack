@@ -66,13 +66,16 @@ export default class HttpPack {
                 this.storage.save(retry_pack);
             }
         }.bind(this));
-        if(packs.length > 0){
-            this.requestInstance = request(Object.assign({}, this.requestOpts, {
-                body: this.combine(packs)
-            }));
-        } else {
-            this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
-        }
+        // if(packs.length > 0){
+        //     this.requestInstance = request(Object.assign({}, this.requestOpts, {
+        //         body: this.combine(packs)
+        //     }));
+        // } else {
+        //     this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
+        // }
+        this.requestInstance = request(Object.assign({}, this.requestOpts, {
+            body: this.combine(packs)
+        }));
     }
 
     // combine packs return body
@@ -122,7 +125,7 @@ export default class HttpPack {
                 } else if(pack.msg_type == MSG_TYPE_RELEASE){
                     let payload = this.storage.release(pack.msg_id);
                     if(payload != undefined){
-                        this.callback(pack.msg_id, payload);
+                        this.callback(pack.payload, response);
                     }
                     let reply = Encode(MSG_TYPE_COMPLETED, QoS0, 0, pack.msg_id);
                     this.storage.save(reply);

@@ -6,6 +6,13 @@
     "configurations": [
         {
             "type": "node",
+            "request": "launch",
+            "name": "Run test.js",
+            "program": "${workspaceRoot}\\test.js",
+            "cwd": "${workspaceRoot}"
+        },
+        {
+            "type": "node",
             "name": "Debug Mocha Test",
             "address": "localhost",
             "port": 5858,
