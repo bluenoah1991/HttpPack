@@ -11,17 +11,16 @@ var buf3 = new Buffer('hello bar!', 'utf-8');
 
 var httpPack = new HttpPack({
     callback: function(payload, response){
-        // pass
+        console.log(payload);
     },
     requestCallbackHook: function(error, response, body){
-        assert.equal(response.statusCode, 200, 'response status equal 200');
-        done(error);
+        console.log(body);
     },
     requestOpts: {
-        url: 'http://localhost:8080'
+        url: 'http://192.168.102.73:8080'
     }
 });
 
 httpPack.commit(buf1, 0);
-httpPack.commit(buf2, 0);
-httpPack.commit(buf3, 0);
+httpPack.commit(buf2, 1);
+httpPack.commit(buf3, 2);

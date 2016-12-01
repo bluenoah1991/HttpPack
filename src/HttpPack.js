@@ -73,8 +73,12 @@ export default class HttpPack {
         // } else {
         //     this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
         // }
+        let body = this.combine(packs);
+        if(body.length === 0){
+            body = '';
+        }
         this.requestInstance = request(Object.assign({}, this.requestOpts, {
-            body: this.combine(packs)
+            body: body
         }));
     }
 

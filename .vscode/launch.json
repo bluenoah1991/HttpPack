@@ -9,7 +9,9 @@
             "request": "launch",
             "name": "Run test.js",
             "program": "${workspaceRoot}\\test.js",
-            "cwd": "${workspaceRoot}"
+            "cwd": "${workspaceRoot}",
+            "sourceMaps": true,
+            "outDir": "${workspaceRoot}/lib"
         },
         {
             "type": "node",
