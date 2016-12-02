@@ -18,11 +18,11 @@ var httpPack = new HttpPack({
         console.log(body);
     },
     requestOpts: {
-        url: 'http://192.168.102.73:8080'
+        url: 'http://localhost:8080'
     }
 });
 
 httpPack.commit(buf1, 0);
-// httpPack.commit(buf2, 1);
-// httpPack.commit(buf3, 2);
-// httpPack.commit(buf4, 2);
+httpPack.commit(buf2, 1);
+httpPack.commit(buf3, 2);
+httpPack.commit(buf4, 2);
