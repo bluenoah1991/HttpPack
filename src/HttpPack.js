@@ -17,8 +17,8 @@ import {
 const MAX_REQUEST_NUMBER = 20;
 
 export default class HttpPack {
-    constructor(opts, callback){
-        this.callback = callback != undefined ? callback : function(){};
+    constructor(opts){
+        this.callback = opts.callback != undefined ? opts.callback : function(){};
         this.requestCallbackHook = opts.requestCallbackHook != undefined ? opts.requestCallbackHook : function(){};
         this.max_request_number = opts.max_request_number != undefined ? opts.max_request_number : MAX_REQUEST_NUMBER;
         this.storage = opts.storage != undefined ? opts.storage : new MemoryStorage();
@@ -28,6 +28,7 @@ export default class HttpPack {
             forever: true,
             timeout: 60 * 1000,
             gzip: true,
+            encoding: null,
             callback: this.requestCallback.bind(this)
         };
         this.requestOpts = opts.requestOpts != undefined ? Object.assign({}, this.defaultRequestOpts, opts.requestOpts) : this.defaultRequestOpts;
@@ -104,8 +105,8 @@ export default class HttpPack {
     requestCallback(error, response, body){
         this.requestCallbackHook(error, response, body);
         if(!error && response.statusCode >= 200 && response.statusCode < 300){
-            if(typeof body == 'string'){
-                body = Buffer.from(body);
+            if(body == undefined){
+                body = Buffer.alloc(0);
             }
             let packs = this.split(body);
             packs.forEach(function(pack){
@@ -115,6 +116,7 @@ export default class HttpPack {
                     } else if(pack.qos == QoS1){
                         let reply = Encode(MSG_TYPE_ACK, QoS0, 0, pack.msg_id);
                         this.storage.save(reply);
+                        this.callback(pack.payload, response);
                     } else if(pack.qos == QoS2){
                         this.storage.receive(pack.msg_id, pack.payload);
                         let reply = Encode(MSG_TYPE_RECEIVED, QoS0, 0, pack.msg_id);
@@ -129,7 +131,7 @@ export default class HttpPack {
                 } else if(pack.msg_type == MSG_TYPE_RELEASE){
                     let payload = this.storage.release(pack.msg_id);
                     if(payload != undefined){
-                        this.callback(pack.payload, response);
+                        this.callback(payload, response);
                     }
                     let reply = Encode(MSG_TYPE_COMPLETED, QoS0, 0, pack.msg_id);
                     this.storage.save(reply);
