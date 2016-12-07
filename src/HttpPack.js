@@ -1,7 +1,7 @@
-import request from 'request';
 import _ from 'lodash';
 import moment from 'moment';
 
+import {Request, DefaultRequestOpts} from './HttpClient';
 import MemoryStorage from './MemoryStorage';
 import {
     Encode, 
@@ -22,15 +22,7 @@ export default class HttpPack {
         this.requestCallbackHook = opts.requestCallbackHook != undefined ? opts.requestCallbackHook : function(){};
         this.max_request_number = opts.max_request_number != undefined ? opts.max_request_number : MAX_REQUEST_NUMBER;
         this.storage = opts.storage != undefined ? opts.storage : new MemoryStorage();
-        this.defaultRequestOpts = {
-            method: 'POST',
-            url: 'http://www.example.com/',
-            forever: true,
-            timeout: 60 * 1000,
-            gzip: true,
-            encoding: null,
-            callback: this.requestCallback.bind(this)
-        };
+        this.defaultRequestOpts = DefaultRequestOpts;
         this.requestOpts = opts.requestOpts != undefined ? Object.assign({}, this.defaultRequestOpts, opts.requestOpts) : this.defaultRequestOpts;
         this.heartbeat = opts.heartbeat != undefined ? opts.heartbeat : 1000;
         this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
@@ -67,20 +59,14 @@ export default class HttpPack {
                 this.storage.save(retry_pack);
             }
         }.bind(this));
-        // if(packs.length > 0){
-        //     this.requestInstance = request(Object.assign({}, this.requestOpts, {
-        //         body: this.combine(packs)
-        //     }));
-        // } else {
-        //     this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
-        // }
+
         let body = this.combine(packs);
         if(body.length === 0){
             body = '';
         }
-        this.requestInstance = request(Object.assign({}, this.requestOpts, {
+        Request(Object.assign({}, this.requestOpts, {
             body: body
-        }));
+        }), this.requestCallback.bind(this));
     }
 
     // combine packs return body
@@ -104,10 +90,7 @@ export default class HttpPack {
 
     requestCallback(error, response, body){
         this.requestCallbackHook(error, response, body);
-        if(!error && response.statusCode >= 200 && response.statusCode < 300){
-            if(body == undefined){
-                body = Buffer.alloc(0);
-            }
+        if(body != undefined){
             let packs = this.split(body);
             packs.forEach(function(pack){
                 if(pack.msg_type == MSG_TYPE_SEND){

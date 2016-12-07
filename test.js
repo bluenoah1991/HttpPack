@@ -1,8 +1,8 @@
 var HttpPack = require('./index').HttpPack.default;
-
-var Encode = require('./lib/Protocol').Encode;
-var Decode = require('./lib/Protocol').Decode;
-var MSG_TYPE_COMPLETED = require('./lib/Protocol').MSG_TYPE_COMPLETED;
+var Protocol = require('./index').Protocol,
+    Encode = Protocol.Encode,
+    Decode = Protocol.Decode,
+    MSG_TYPE_COMPLETED = Protocol.MSG_TYPE_COMPLETED;
 
 
 var buf1 = new Buffer('hello world!', 'utf-8');
@@ -18,7 +18,7 @@ var httpPack = new HttpPack({
         console.log(body);
     },
     requestOpts: {
-        url: 'http://localhost:8080'
+        url: 'http://192.168.102.73:8080'
     }
 });
 

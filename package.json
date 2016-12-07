@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "babel src -d lib -s",
+    "bundle": "browserify index.js -o bundle.js",
+    "bundle-test": "browserify test.js -o test.bundle.js -d",
     "test": "mocha",
     "test-debug": "mocha --debug-brk"
   },
@@ -17,11 +19,16 @@
   ],
   "author": "codemeow5",
   "license": "MIT",
+  "browser": {
+    "./lib/HttpClient.js": "./lib/HttpWebClient.js"
+  },
   "dependencies": {
+    "buffer": "^5.0.2",
     "heap": "^0.2.6",
     "lodash": "^4.17.2",
     "moment": "^2.17.0",
-    "request": "^2.79.0"
+    "request": "^2.79.0",
+    "whatwg-fetch": "^2.0.1"
   },
   "devDependencies": {
     "babel-cli": "^6.18.0",
