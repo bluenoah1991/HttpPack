@@ -9,9 +9,11 @@ export const DefaultRequestOpts = {
     encoding: null
 };
 
-export function Request(opts, callback){
-    return request(opts, function(error, response, body){
-        if (response.statusCode >= 200 && response.statusCode < 300) {
+export function Request(opts, callback) {
+    return request(opts, function (error, response, body) {
+        if (error != undefined) {
+            callback(error, response, body);
+        } else if (response.statusCode >= 200 && response.statusCode < 300) {
             callback(error, response, body);
         } else {
             var err = new Error(response.statusText);
