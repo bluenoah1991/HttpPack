@@ -1729,7 +1729,7 @@ var HttpPack = function () {
         this.max_request_number = opts.max_request_number != undefined ? opts.max_request_number : MAX_REQUEST_NUMBER;
         this.storage = opts.storage != undefined ? opts.storage : new _MemoryStorage2.default();
         this.defaultRequestOpts = _HttpClient.DefaultRequestOpts;
-        this.requestOpts = opts.requestOpts != undefined ? Object.assign({}, this.defaultRequestOpts, opts.requestOpts) : this.defaultRequestOpts;
+        this.requestOpts = opts.requestOpts != undefined ? _lodash2.default.merge({}, this.defaultRequestOpts, opts.requestOpts) : this.defaultRequestOpts;
         this.heartbeat = opts.heartbeat != undefined ? opts.heartbeat : 1000;
         this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
     }
@@ -1776,7 +1776,7 @@ var HttpPack = function () {
             if (body.length === 0) {
                 body = '';
             }
-            (0, _HttpClient.Request)(Object.assign({}, this.requestOpts, {
+            (0, _HttpClient.Request)(_lodash2.default.assign({}, this.requestOpts, {
                 body: body
             }), this.requestCallback.bind(this));
         }
@@ -1867,6 +1867,9 @@ require('whatwg-fetch');
 var DefaultRequestOpts = exports.DefaultRequestOpts = {
     method: 'POST',
     url: 'http://www.example.com/', // window.fetch does not use a url option, this is to be compatible with node
+    headers: {
+        'Content-Type': 'application/octet-stream'
+    },
     credentials: 'same-origin'
 };
 

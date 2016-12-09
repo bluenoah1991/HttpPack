@@ -3,6 +3,9 @@ import 'whatwg-fetch';
 export const DefaultRequestOpts = {
     method: 'POST',
     url: 'http://www.example.com/', // window.fetch does not use a url option, this is to be compatible with node
+    headers: {
+        'Content-Type': 'application/octet-stream'
+    },
     credentials: 'same-origin'
 }
 

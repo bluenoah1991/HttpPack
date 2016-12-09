@@ -23,7 +23,7 @@ export default class HttpPack {
         this.max_request_number = opts.max_request_number != undefined ? opts.max_request_number : MAX_REQUEST_NUMBER;
         this.storage = opts.storage != undefined ? opts.storage : new MemoryStorage();
         this.defaultRequestOpts = DefaultRequestOpts;
-        this.requestOpts = opts.requestOpts != undefined ? Object.assign({}, this.defaultRequestOpts, opts.requestOpts) : this.defaultRequestOpts;
+        this.requestOpts = opts.requestOpts != undefined ? _.merge({}, this.defaultRequestOpts, opts.requestOpts) : this.defaultRequestOpts;
         this.heartbeat = opts.heartbeat != undefined ? opts.heartbeat : 1000;
         this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
     }
@@ -64,7 +64,7 @@ export default class HttpPack {
         if(body.length === 0){
             body = '';
         }
-        Request(Object.assign({}, this.requestOpts, {
+        Request(_.assign({}, this.requestOpts, {
             body: body
         }), this.requestCallback.bind(this));
     }

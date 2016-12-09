@@ -3,6 +3,9 @@ import request from 'request';
 export const DefaultRequestOpts = {
     method: 'POST',
     url: 'http://www.example.com/',
+    headers: {
+        'Content-Type': 'application/octet-stream'
+    },
     forever: true,
     timeout: 60 * 1000,
     gzip: true,
