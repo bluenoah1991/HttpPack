@@ -1,4 +1,4 @@
-var HttpPack = require('./index').HttpPack.default;
+var HttpPack = require('./index').HttpPack;
 var Protocol = require('./index').Protocol,
     Encode = Protocol.Encode,
     Decode = Protocol.Decode,

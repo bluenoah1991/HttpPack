@@ -1685,8 +1685,8 @@ module.exports = isArray || function (val) {
 };
 
 },{}],5:[function(require,module,exports){
-exports.HttpPack = require('./lib/HttpPack');
-exports.MemoryStorage = require('./lib/MemoryStorage');
+exports.HttpPack = require('./lib/HttpPack').default;
+exports.MemoryStorage = require('./lib/MemoryStorage').default;
 exports.Protocol = require('./lib/Protocol');
 },{"./lib/HttpPack":6,"./lib/MemoryStorage":8,"./lib/Protocol":9}],6:[function(require,module,exports){
 (function (Buffer){
