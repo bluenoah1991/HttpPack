@@ -1,6 +1,6 @@
 {
   "name": "http-pack",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Nodejs HTTP client with support for packing requests into a single request, applicable to transfer data between server to server",
   "main": "index.js",
   "scripts": {
