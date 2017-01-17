@@ -53,7 +53,7 @@ export function Encode(msg_type = 0x1, qos = 0, dup = 0, msg_id = 0, payload = n
     let buffer = allocUnsafe(5 + remaining_length);
     let fixed_header = (msg_type << 4) | (qos << 2) | (dup << 1);
     buffer.writeUInt8(fixed_header, 0);
-    buffer.writeInt16BE(msg_id, 1);
+    buffer.writeUInt16BE(msg_id, 1);
     buffer.writeUInt16BE(remaining_length, 3);
     if(payload != undefined){
         payload.copy(buffer, 5, offset, offset + remaining_length);
@@ -78,7 +78,7 @@ export function Decode(buffer, offset = 0){
     let msg_type = fixed_header >> 4;
     let qos = (fixed_header & 0xf) >> 2;
     let dup = (fixed_header & 0x3) >> 1;
-    let msg_id = buffer.readInt16BE(offset + 1);
+    let msg_id = buffer.readUInt16BE(offset + 1);
     let remaining_length = buffer.readUInt16BE(offset + 3);
     let payload = allocUnsafe(remaining_length);
     buffer.copy(payload, 0, offset + 5, offset + 5 + remaining_length);

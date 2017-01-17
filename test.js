@@ -18,7 +18,7 @@ var httpPack = new HttpPack({
         console.log(body);
     },
     requestOpts: {
-        url: 'http://192.168.102.73:8080'
+        url: 'http://127.0.0.1:8080'
     }
 });
 
