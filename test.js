@@ -15,7 +15,7 @@ var httpPack = new HttpPack({
         console.log(payload.toString('utf-8'));
     },
     requestCallbackHook: function(error, response, body){
-        console.log(body);
+        // console.log(body);
     },
     requestOpts: {
         url: 'http://127.0.0.1:8080'
