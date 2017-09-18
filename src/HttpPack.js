@@ -92,11 +92,11 @@ export default class HttpPack {
         if(typeof payload == 'string'){
             payload = new Buffer(payload, 'utf-8');
         }
-        this.storage.generateId().then(function(id){
+        return this.storage.generateId().then(function(id){
             let packet = Protocol.Encode(
                 Protocol.MSG_TYPE_SEND, qos, 0, id, payload);
             packet.timestamp = moment().unix();
-            this.storage.savePacket(packet);
+            return this.storage.savePacket(packet);
         }.bind(this));
     }
 
