@@ -44,51 +44,54 @@ function allocUnsafe(val){
     }
 }
 
-export function Encode(msg_type = 0x1, qos = 0, dup = 0, msg_id = 0, payload = null, offset = 0, remaining_length = null){
+export function Encode(msgType = MSG_TYPE_SEND, qos = QoS0, dup = 0, identifier = 0, payload){
+    let remainingLength = 0;
     if(payload != undefined){
-        remaining_length = remaining_length || payload.length;
-    } else {
-        remaining_length = 0;
-    }  
-    let buffer = allocUnsafe(5 + remaining_length);
-    let fixed_header = (msg_type << 4) | (qos << 2) | (dup << 1);
-    buffer.writeUInt8(fixed_header, 0);
-    buffer.writeUInt16BE(msg_id, 1);
-    buffer.writeUInt16BE(remaining_length, 3);
-    if(payload != undefined){
-        payload.copy(buffer, 5, offset, offset + remaining_length);
+        remainingLength = payload.length;
     }
-    return {
-        msg_type: msg_type,
-        qos: qos,
-        dup: dup,
-        msg_id: msg_id,
-        remaining_length: remaining_length,
-        total_length: 5 + remaining_length,
-        payload: payload,
-        buffer: buffer
-    };
-};
+    let buffer = allocUnsafe(5 + remainingLength);
+    let fixedHeader = (msgType << 4) | (qos << 2) | (dup << 1);
+    buffer.writeUInt8(fixedHeader, 0);
+    buffer.writeUInt16BE(identifier, 1);
+    buffer.writeUInt16BE(remainingLength, 3);
+    if(payload != undefined){
+        payload.copy(buffer, 5, 0, remainingLength);
+    }
+    let packet = new Packet(msgType, qos, dup, identifier, payload);
+    packet.buffer = buffer;
+    return packet;
+}
 
 export function Decode(buffer, offset = 0){
-    if(buffer == undefined){
-        throw 'Buffer cannot be null.';
+    let fixedHeader = buffer.readInt8(offset);
+    let msgType = fixedHeader >> 4;
+    let qos = (fixedHeader & 0xf) >> 2;
+    let dup = (fixedHeader & 0x3) >> 1;
+    let identifier = buffer.readUInt16BE(offset + 1);
+    let remainingLength = buffer.readUInt16BE(offset + 3);
+    let payload = allocUnsafe(remainingLength);
+    buffer.copy(payload, 0, offset + 5, offset + 5 + remainingLength);
+    let packet = new Packet(msgType, qos, dup, identifier, payload);
+    packet.buffer = buffer;
+    return packet;
+}
+
+export class Packet{
+    constructor(msgType = MSG_TYPE_SEND, qos = QoS0, dup = 0, identifier = 0, payload){
+        this.msgType = msgType;
+        this.qos = qos;
+        this.dup = dup;
+        this.identifier = identifier;
+        this.payload = payload;
+        if(payload == undefined){
+            this.remainingLength = 0;
+        } else {
+            this.remainingLength = payload.length;
+        }
+        this.totalLength = 5 + this.remainingLength;
+        this.retryTimes = 0;
+        this.timestamp = 0;
+        this.isConfirmed = false;
+        this.buffer = null;
     }
-    let fixed_header = buffer.readInt8(offset);
-    let msg_type = fixed_header >> 4;
-    let qos = (fixed_header & 0xf) >> 2;
-    let dup = (fixed_header & 0x3) >> 1;
-    let msg_id = buffer.readUInt16BE(offset + 1);
-    let remaining_length = buffer.readUInt16BE(offset + 3);
-    let payload = allocUnsafe(remaining_length);
-    buffer.copy(payload, 0, offset + 5, offset + 5 + remaining_length);
-    return {
-        msg_type: msg_type,
-        qos: qos,
-        dup: dup,
-        msg_id: msg_id,
-        remaining_length: remaining_length,
-        total_length: 5 + remaining_length,
-        payload: payload
-    };
-};
+}

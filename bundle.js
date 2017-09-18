@@ -2,7 +2,7 @@
 exports.HttpPack = require('./lib/HttpPack').default;
 exports.MemoryStorage = require('./lib/MemoryStorage').default;
 exports.Protocol = require('./lib/Protocol');
-},{"./lib/HttpPack":2,"./lib/MemoryStorage":4,"./lib/Protocol":5}],2:[function(require,module,exports){
+},{"./lib/HttpPack":2,"./lib/MemoryStorage":3,"./lib/Protocol":4}],2:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -20,143 +20,156 @@ var _moment = require('moment');
 
 var _moment2 = _interopRequireDefault(_moment);
 
-var _HttpClient = require('./HttpClient');
-
 var _MemoryStorage = require('./MemoryStorage');
 
 var _MemoryStorage2 = _interopRequireDefault(_MemoryStorage);
 
 var _Protocol = require('./Protocol');
 
+var Protocol = _interopRequireWildcard(_Protocol);
+
+function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var MAX_REQUEST_NUMBER = 20;
-
 var HttpPack = function () {
-    function HttpPack(opts) {
+    function HttpPack(options) {
         _classCallCheck(this, HttpPack);
 
-        this.callback = opts.callback != undefined ? opts.callback : function () {};
-        this.requestCallbackHook = opts.requestCallbackHook != undefined ? opts.requestCallbackHook : function () {};
-        this.max_request_number = opts.max_request_number != undefined ? opts.max_request_number : MAX_REQUEST_NUMBER;
-        this.storage = opts.storage != undefined ? opts.storage : new _MemoryStorage2.default();
-        this.defaultRequestOpts = _HttpClient.DefaultRequestOpts;
-        this.requestOpts = opts.requestOpts != undefined ? _lodash2.default.merge({}, this.defaultRequestOpts, opts.requestOpts) : this.defaultRequestOpts;
-        this.heartbeat = opts.heartbeat != undefined ? opts.heartbeat : 1000;
-        this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
+        if (options == undefined) {
+            options = {};
+        }
+        this.storage = options['storage'] || new _MemoryStorage2.default();
     }
 
     _createClass(HttpPack, [{
-        key: 'commit',
-        value: function commit(data) {
-            var qos = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0;
-
-            var pack = (0, _Protocol.Encode)(_Protocol.MSG_TYPE_SEND, qos, 0, this.storage.uniqueId(), data);
-            this.storage.save(pack);
-        }
-    }, {
-        key: 'retry',
-        value: function retry(pack) {
-            if (pack.qos == _Protocol.QoS0) {
+        key: 'generateRetryPacket',
+        value: function generateRetryPacket(packet) {
+            if (packet.qos == Protocol.QoS0) {
                 return null;
             } else {
-                if (pack.retry_times != undefined && pack.retry_times > 0) {
-                    var retry_pack = _lodash2.default.cloneDeep(pack);
-                    retry_pack.retry_times++;
-                    retry_pack.timestamp = (0, _moment2.default)().add(retry_pack.retry_times * 5, 's');
-                    return retry_pack;
+                if (packet.retryTimes != undefined && packet.retryTimes > 0) {
+                    var retryPacket = _lodash2.default.cloneDeep(packet);
+                    retryPacket.retryTimes++;
+                    retryPacket.timestamp = (0, _moment2.default)().add(retryPacket.retryTimes * 5, 's').unix();
+                    return retryPacket;
                 } else {
-                    var _retry_pack = (0, _Protocol.Encode)(pack.msg_type, pack.qos, 1, pack.msg_id, pack.payload);
-                    _retry_pack.retry_times = 1;
-                    _retry_pack.timestamp = (0, _moment2.default)().add(_retry_pack.retry_times * 5, 's');
-                    return _retry_pack;
+                    var _retryPacket = Protocol.Encode(packet.msgType, packet.qos, 1, packet.identifier, packet.payload);
+                    _retryPacket.retryTimes = 1;
+                    _retryPacket.timestamp = (0, _moment2.default)().add(_retryPacket.retryTimes * 5, 's').unix();
+                    return _retryPacket;
                 }
             }
         }
     }, {
-        key: 'loop',
-        value: function loop() {
-            var packs = this.storage.unconfirmed(this.max_request_number);
-            packs.forEach(function (pack) {
-                var retry_pack = this.retry(pack);
-                if (retry_pack != undefined) {
-                    this.storage.save(retry_pack);
+        key: 'handlePacket',
+        value: function handlePacket(packet, callback) {
+            if (packet.msgType == Protocol.MSG_TYPE_SEND) {
+                if (packet.qos == Protocol.QoS0) {
+                    callback(packet.payload);
+                    return null;
+                } else if (packet.qos == Protocol.QoS1) {
+                    var replyPacket = Protocol.Encode(Protocol.MSG_TYPE_ACK, Protocol.QoS0, 0, packet.identifier);
+                    return this.storage.savePacket(replyPacket).then(function () {
+                        callback(packet.payload);
+                    }.bind(this));
+                } else if (packet.qos == Protocol.QoS2) {
+                    return this.storage.receivePacket(packet.identifier, packet.payload).then(function () {
+                        var replyPacket = Protocol.Encode(Protocol.MSG_TYPE_RECEIVED, Protocol.QoS0, 0, packet.identifier);
+                        return this.storage.savePacket(replyPacket);
+                    }.bind(this));
                 }
-            }.bind(this));
-
-            var body = this.combine(packs);
-            if (body.length === 0) {
-                body = '';
-            }
-            (0, _HttpClient.Request)(_lodash2.default.assign({}, this.requestOpts, {
-                body: body
-            }), this.requestCallback.bind(this));
-        }
-
-        // combine packs return body
-
-    }, {
-        key: 'combine',
-        value: function combine(packs) {
-            return Buffer.concat(packs.map(function (pack) {
-                return pack.buffer;
-            }));
-        }
-
-        // split body return packs
-
-    }, {
-        key: 'split',
-        value: function split(body) {
-            var packs = [];
-            var offset = 0;
-            while (offset < body.length) {
-                var pack = (0, _Protocol.Decode)(body, offset);
-                packs.push(pack);
-                offset += pack.total_length;
-            }
-            return packs;
-        }
-    }, {
-        key: 'requestCallback',
-        value: function requestCallback(error, response, body) {
-            this.requestCallbackHook(error, response, body);
-            if (body != undefined) {
-                var packs = this.split(body);
-                packs.forEach(function (pack) {
-                    if (pack.msg_type == _Protocol.MSG_TYPE_SEND) {
-                        if (pack.qos == _Protocol.QoS0) {
-                            this.callback(pack.payload, response);
-                        } else if (pack.qos == _Protocol.QoS1) {
-                            var reply = (0, _Protocol.Encode)(_Protocol.MSG_TYPE_ACK, _Protocol.QoS0, 0, pack.msg_id);
-                            this.storage.save(reply);
-                            this.callback(pack.payload, response);
-                        } else if (pack.qos == _Protocol.QoS2) {
-                            this.storage.receive(pack.msg_id, pack.payload);
-                            var _reply = (0, _Protocol.Encode)(_Protocol.MSG_TYPE_RECEIVED, _Protocol.QoS0, 0, pack.msg_id);
-                            this.storage.save(_reply);
-                        }
-                    } else if (pack.msg_type == _Protocol.MSG_TYPE_ACK) {
-                        this.storage.confirm(pack.msg_id);
-                    } else if (pack.msg_type == _Protocol.MSG_TYPE_RECEIVED) {
-                        this.storage.confirm(pack.msg_id);
-                        var _reply2 = (0, _Protocol.Encode)(_Protocol.MSG_TYPE_RELEASE, _Protocol.QoS1, 0, pack.msg_id);
-                        this.storage.save(_reply2);
-                    } else if (pack.msg_type == _Protocol.MSG_TYPE_RELEASE) {
-                        var payload = this.storage.release(pack.msg_id);
-                        if (payload != undefined) {
-                            this.callback(payload, response);
-                        }
-                        var _reply3 = (0, _Protocol.Encode)(_Protocol.MSG_TYPE_COMPLETED, _Protocol.QoS0, 0, pack.msg_id);
-                        this.storage.save(_reply3);
-                    } else if (pack.msg_type == _Protocol.MSG_TYPE_COMPLETED) {
-                        this.storage.confirm(pack.msg_id);
-                    }
+            } else if (packet.msgType == Protocol.MSG_TYPE_ACK) {
+                return this.storage.confirmPacket(packet.identifier);
+            } else if (packet.msgType == Protocol.MSG_TYPE_RECEIVED) {
+                return this.storage.confirmPacket(packet.identifier).then(function () {
+                    var replyPacket = Protocol.Encode(Protocol.MSG_TYPE_RELEASE, Protocol.QoS1, 0, packet.identifier);
+                    return this.storage.savePacket(replyPacket);
                 }.bind(this));
+            } else if (packet.msgType == Protocol.MSG_TYPE_RELEASE) {
+                return this.storage.releasePacket(packet.identifier).then(function (payload) {
+                    if (payload != undefined) {
+                        callback(payload);
+                    }
+                    var replyPacket = Protocol.Encode(Protocol.MSG_TYPE_COMPLETED, Protocol.QoS0, 0, packet.identifier);
+                    return this.storage.savePacket(replyPacket);
+                }.bind(this));
+            } else if (packet.msgType == Protocol.MSG_TYPE_COMPLETED) {
+                return this.storage.confirmPacket(packet.identifier);
             }
-            this.loopHandle = setTimeout(this.loop.bind(this), this.heartbeat);
+        }
+    }, {
+        key: 'combinePacket',
+        value: function combinePacket(packets) {
+            var buffers = _lodash2.default.map(packets, function (packet) {
+                return packet.buffer;
+            }.bind(this));
+            return Buffer.concat(buffers);
+        }
+    }, {
+        key: 'splitBuffer',
+        value: function splitBuffer(buffer) {
+            var packets = [];
+            var length = buffer.length;
+            var offset = 0;
+            while (offset < buffer.length) {
+                var packet = Protocol.Decode(buffer, offset);
+                packets.push(packet);
+                offset += packet.totalLength;
+            }
+            return packets;
+        }
+
+        // Public method
+
+    }, {
+        key: 'commit',
+        value: function commit(payload) {
+            var qos = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : Protocol.QoS0;
+
+            if (typeof payload == 'string') {
+                payload = new Buffer(payload, 'utf-8');
+            }
+            this.storage.generateId().then(function (id) {
+                var packet = Protocol.Encode(Protocol.MSG_TYPE_SEND, qos, 0, id, payload);
+                packet.timestamp = (0, _moment2.default)().unix();
+                this.storage.savePacket(packet);
+            }.bind(this));
+        }
+    }, {
+        key: 'generateBody',
+        value: function generateBody() {
+            var respondPackets = this.storage.unconfirmedPacket(5);
+            return respondPackets.then(function (packets) {
+                var waitHandles = _lodash2.default.map(packets, function (packet) {
+                    var retryPacket = this.generateRetryPacket(packet);
+                    if (retryPacket != undefined) {
+                        return this.storage.savePacket(retryPacket).then(function () {
+                            return packet;
+                        });
+                    }
+                    return packet;
+                }.bind(this));
+                return Promise.all(waitHandles).then(function (packets) {
+                    return this.combinePacket(packets);
+                }.bind(this));
+            }.bind(this));
+        }
+    }, {
+        key: 'parseBody',
+        value: function parseBody(body, callback) {
+            if (body == undefined) {
+                var nullString = new Buffer('', 'utf-8');
+                return Promise.resolve(nullString);
+            }
+            body = new Buffer(body, 'utf-8');
+            var packets = this.splitBuffer(body);
+            var waitHandles = _lodash2.default.map(packets, function (packet) {
+                return this.handlePacket(packet, callback);
+            }.bind(this));
+            return Promise.all(waitHandles);
         }
     }]);
 
@@ -166,50 +179,7 @@ var HttpPack = function () {
 exports.default = HttpPack;
 
 }).call(this,require("buffer").Buffer)
-},{"./HttpClient":3,"./MemoryStorage":4,"./Protocol":5,"buffer":12,"lodash":8,"moment":9}],3:[function(require,module,exports){
-(function (Buffer){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.DefaultRequestOpts = undefined;
-exports.Request = Request;
-
-require('whatwg-fetch');
-
-var DefaultRequestOpts = exports.DefaultRequestOpts = {
-    method: 'POST',
-    url: 'http://www.example.com/', // window.fetch does not use a url option, this is to be compatible with node
-    headers: {
-        'Content-Type': 'application/octet-stream'
-    },
-    credentials: 'same-origin'
-};
-
-function checkStatus(response) {
-    if (response.status >= 200 && response.status < 300) {
-        return response;
-    } else {
-        var error = new Error(response.statusText);
-        error.response = response;
-        throw error;
-    }
-}
-
-function Request(opts, callback) {
-    fetch(opts.url, opts).then(checkStatus).then(function (response) {
-        return response.arrayBuffer().then(function (buffer) {
-            // https://github.com/nodejs/node/issues/106
-            callback(null, response, new Buffer(new Uint8Array(buffer)));
-        });
-    }).catch(function (error) {
-        callback(error, error.response, null);
-    });
-}
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":12,"whatwg-fetch":10}],4:[function(require,module,exports){
+},{"./MemoryStorage":3,"./Protocol":4,"buffer":10,"lodash":7,"moment":8}],3:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -230,97 +200,70 @@ var MemoryStorage = function () {
     function MemoryStorage() {
         _classCallCheck(this, MemoryStorage);
 
-        this.uid = 0;
-        this.__packs__ = [];
-        this.index = {};
+        this.nid = 0;
+        this.itemsByIndex = {};
+        this.messages = {};
         this.heap = new _heap2.default(function (a, b) {
-            a.confirm = a.confirm || false;
-            b.confirm = b.confirm || false;
-            if (a.confirm && !b.confirm) {
+            if (a.isConfirmed) {
                 return true;
-            } else if (!a.confirm && b.confirm) {
+            } else if (b.isConfirmed) {
                 return false;
-            }
-            if (a.timestamp == undefined && b.timestamp != undefined) {
-                return true;
-            } else if (a.timestamp != undefined && b.timestamp == undefined) {
-                return false;
-            } else if (a.timestamp == undefined && b.timestamp == undefined) {
-                return a.msg_id > b.msg_id;
             }
             return a.timestamp > b.timestamp;
         });
-        this.msgs = {};
     }
 
-    // generate global unique id
-
-
     _createClass(MemoryStorage, [{
-        key: 'uniqueId',
-        value: function uniqueId() {
-            return ++this.uid;
+        key: 'generateId',
+        value: function generateId() {
+            return Promise.resolve(++this.nid);
         }
-
-        // insert pack and set timestamp
-
     }, {
-        key: 'save',
-        value: function save(pack) {
-            pack.confirm = false;
-            this.heap.push(pack);
-            this.index[pack.msg_id] = pack;
+        key: 'savePacket',
+        value: function savePacket(packet) {
+            this.heap.push(packet);
+            this.itemsByIndex[packet.identifier] = packet;
+            return Promise.resolve(null);
         }
-
-        // fetch up to limit unconfirmed packs
-
     }, {
-        key: 'unconfirmed',
-        value: function unconfirmed(limit) {
-            var packs = [];
+        key: 'unconfirmedPacket',
+        value: function unconfirmedPacket(limit) {
+            var packets = [];
             while (limit > 0) {
-                var pack = this.heap.pop();
-                if (pack == undefined) {
+                var packet = this.heap.pop();
+                if (packet == undefined) {
                     break;
-                } else if (pack.confirm) {
+                } else if (packet.isConfirmed) {
                     continue;
                 } else {
-                    packs.push(pack);
+                    packets.push(packet);
                     limit--;
                 }
             }
-            return packs;
+            return Promise.resolve(packets);
         }
-
-        // confirm and return message
-
     }, {
-        key: 'confirm',
-        value: function confirm(msg_id) {
-            var pack = this.index[msg_id];
-            if (pack != undefined) {
-                pack.confirm = true;
-                this.heap.updateItem(pack);
+        key: 'confirmPacket',
+        value: function confirmPacket(identifier) {
+            var packet = this.itemsByIndex[identifier];
+            if (packet != undefined) {
+                packet.isConfirmed = true;
+                this.heap.updateItem(packet);
             }
-            return pack;
+            return Promise.resolve(packet);
         }
-
-        // receive and storage message
-
     }, {
-        key: 'receive',
-        value: function receive(msg_id, payload) {
-            this.msgs[msg_id] = payload;
+        key: 'receivePacket',
+        value: function receivePacket(identifier, payload) {
+            this.messages[identifier] = payload;
+            return Promise.resolve(null);
         }
-
-        // release and delete message
-
     }, {
-        key: 'release',
-        value: function release(msg_id) {
-            var msg = this.msgs[msg_id];
-            delete this.msgs[msg_id];
-            return msg;
+        key: 'releasePacket',
+        value: function releasePacket(identifier) {
+            var payload = this.messages[identifier];
+            delete this.messages[identifier];
+            return Promise.resolve(payload);
         }
     }]);
 
@@ -329,7 +272,7 @@ var MemoryStorage = function () {
 
 exports.default = MemoryStorage;
 
-},{"heap":6}],5:[function(require,module,exports){
+},{"heap":5}],4:[function(require,module,exports){
 (function (Buffer){
 "use strict";
 
@@ -338,6 +281,9 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.Encode = Encode;
 exports.Decode = Decode;
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
 /**
  * bit           | 7 | 6 | 5 | 4 |  3  |  2  |    1     |    0     |
  * byte1         | Message Type  | QoS Level | Dup flag | Reserved |
@@ -385,69 +331,76 @@ function allocUnsafe(val) {
 }
 
 function Encode() {
-    var msg_type = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 0x1;
-    var qos = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0;
+    var msgType = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : MSG_TYPE_SEND;
+    var qos = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : QoS0;
     var dup = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
-    var msg_id = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
-    var payload = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : null;
-    var offset = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : 0;
-    var remaining_length = arguments.length > 6 && arguments[6] !== undefined ? arguments[6] : null;
+    var identifier = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
+    var payload = arguments[4];
 
+    var remainingLength = 0;
     if (payload != undefined) {
-        remaining_length = remaining_length || payload.length;
-    } else {
-        remaining_length = 0;
+        remainingLength = payload.length;
     }
-    var buffer = allocUnsafe(5 + remaining_length);
-    var fixed_header = msg_type << 4 | qos << 2 | dup << 1;
-    buffer.writeUInt8(fixed_header, 0);
-    buffer.writeUInt16BE(msg_id, 1);
-    buffer.writeUInt16BE(remaining_length, 3);
+    var buffer = allocUnsafe(5 + remainingLength);
+    var fixedHeader = msgType << 4 | qos << 2 | dup << 1;
+    buffer.writeUInt8(fixedHeader, 0);
+    buffer.writeUInt16BE(identifier, 1);
+    buffer.writeUInt16BE(remainingLength, 3);
     if (payload != undefined) {
-        payload.copy(buffer, 5, offset, offset + remaining_length);
+        payload.copy(buffer, 5, 0, remainingLength);
     }
-    return {
-        msg_type: msg_type,
-        qos: qos,
-        dup: dup,
-        msg_id: msg_id,
-        remaining_length: remaining_length,
-        total_length: 5 + remaining_length,
-        payload: payload,
-        buffer: buffer
-    };
-};
+    var packet = new Packet(msgType, qos, dup, identifier, payload);
+    packet.buffer = buffer;
+    return packet;
+}
 
 function Decode(buffer) {
     var offset = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0;
 
-    if (buffer == undefined) {
-        throw 'Buffer cannot be null.';
+    var fixedHeader = buffer.readInt8(offset);
+    var msgType = fixedHeader >> 4;
+    var qos = (fixedHeader & 0xf) >> 2;
+    var dup = (fixedHeader & 0x3) >> 1;
+    var identifier = buffer.readUInt16BE(offset + 1);
+    var remainingLength = buffer.readUInt16BE(offset + 3);
+    var payload = allocUnsafe(remainingLength);
+    buffer.copy(payload, 0, offset + 5, offset + 5 + remainingLength);
+    var packet = new Packet(msgType, qos, dup, identifier, payload);
+    packet.buffer = buffer;
+    return packet;
+}
+
+var Packet = exports.Packet = function Packet() {
+    var msgType = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : MSG_TYPE_SEND;
+    var qos = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : QoS0;
+    var dup = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
+    var identifier = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
+    var payload = arguments[4];
+
+    _classCallCheck(this, Packet);
+
+    this.msgType = msgType;
+    this.qos = qos;
+    this.dup = dup;
+    this.identifier = identifier;
+    this.payload = payload;
+    if (payload == undefined) {
+        this.remainingLength = 0;
+    } else {
+        this.remainingLength = payload.length;
     }
-    var fixed_header = buffer.readInt8(offset);
-    var msg_type = fixed_header >> 4;
-    var qos = (fixed_header & 0xf) >> 2;
-    var dup = (fixed_header & 0x3) >> 1;
-    var msg_id = buffer.readUInt16BE(offset + 1);
-    var remaining_length = buffer.readUInt16BE(offset + 3);
-    var payload = allocUnsafe(remaining_length);
-    buffer.copy(payload, 0, offset + 5, offset + 5 + remaining_length);
-    return {
-        msg_type: msg_type,
-        qos: qos,
-        dup: dup,
-        msg_id: msg_id,
-        remaining_length: remaining_length,
-        total_length: 5 + remaining_length,
-        payload: payload
-    };
+    this.totalLength = 5 + this.remainingLength;
+    this.retryTimes = 0;
+    this.timestamp = 0;
+    this.isConfirmed = false;
+    this.buffer = null;
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":12}],6:[function(require,module,exports){
+},{"buffer":10}],5:[function(require,module,exports){
 module.exports = require('./lib/heap');
 
-},{"./lib/heap":7}],7:[function(require,module,exports){
+},{"./lib/heap":6}],6:[function(require,module,exports){
 // Generated by CoffeeScript 1.8.0
 (function() {
   var Heap, defaultCmp, floor, heapify, heappop, heappush, heappushpop, heapreplace, insort, min, nlargest, nsmallest, updateItem, _siftdown, _siftup;
@@ -824,7 +777,7 @@ module.exports = require('./lib/heap');
 
 }).call(this);
 
-},{}],8:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -17912,7 +17865,7 @@ module.exports = require('./lib/heap');
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],9:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 //! moment.js
 //! version : 2.18.1
 //! authors : Tim Wood, Iskren Chernev, Moment.js contributors
@@ -22377,470 +22330,7 @@ return hooks;
 
 })));
 
-},{}],10:[function(require,module,exports){
-(function(self) {
-  'use strict';
-
-  if (self.fetch) {
-    return
-  }
-
-  var support = {
-    searchParams: 'URLSearchParams' in self,
-    iterable: 'Symbol' in self && 'iterator' in Symbol,
-    blob: 'FileReader' in self && 'Blob' in self && (function() {
-      try {
-        new Blob()
-        return true
-      } catch(e) {
-        return false
-      }
-    })(),
-    formData: 'FormData' in self,
-    arrayBuffer: 'ArrayBuffer' in self
-  }
-
-  if (support.arrayBuffer) {
-    var viewClasses = [
-      '[object Int8Array]',
-      '[object Uint8Array]',
-      '[object Uint8ClampedArray]',
-      '[object Int16Array]',
-      '[object Uint16Array]',
-      '[object Int32Array]',
-      '[object Uint32Array]',
-      '[object Float32Array]',
-      '[object Float64Array]'
-    ]
-
-    var isDataView = function(obj) {
-      return obj && DataView.prototype.isPrototypeOf(obj)
-    }
-
-    var isArrayBufferView = ArrayBuffer.isView || function(obj) {
-      return obj && viewClasses.indexOf(Object.prototype.toString.call(obj)) > -1
-    }
-  }
-
-  function normalizeName(name) {
-    if (typeof name !== 'string') {
-      name = String(name)
-    }
-    if (/[^a-z0-9\-#$%&'*+.\^_`|~]/i.test(name)) {
-      throw new TypeError('Invalid character in header field name')
-    }
-    return name.toLowerCase()
-  }
-
-  function normalizeValue(value) {
-    if (typeof value !== 'string') {
-      value = String(value)
-    }
-    return value
-  }
-
-  // Build a destructive iterator for the value list
-  function iteratorFor(items) {
-    var iterator = {
-      next: function() {
-        var value = items.shift()
-        return {done: value === undefined, value: value}
-      }
-    }
-
-    if (support.iterable) {
-      iterator[Symbol.iterator] = function() {
-        return iterator
-      }
-    }
-
-    return iterator
-  }
-
-  function Headers(headers) {
-    this.map = {}
-
-    if (headers instanceof Headers) {
-      headers.forEach(function(value, name) {
-        this.append(name, value)
-      }, this)
-    } else if (Array.isArray(headers)) {
-      headers.forEach(function(header) {
-        this.append(header[0], header[1])
-      }, this)
-    } else if (headers) {
-      Object.getOwnPropertyNames(headers).forEach(function(name) {
-        this.append(name, headers[name])
-      }, this)
-    }
-  }
-
-  Headers.prototype.append = function(name, value) {
-    name = normalizeName(name)
-    value = normalizeValue(value)
-    var oldValue = this.map[name]
-    this.map[name] = oldValue ? oldValue+','+value : value
-  }
-
-  Headers.prototype['delete'] = function(name) {
-    delete this.map[normalizeName(name)]
-  }
-
-  Headers.prototype.get = function(name) {
-    name = normalizeName(name)
-    return this.has(name) ? this.map[name] : null
-  }
-
-  Headers.prototype.has = function(name) {
-    return this.map.hasOwnProperty(normalizeName(name))
-  }
-
-  Headers.prototype.set = function(name, value) {
-    this.map[normalizeName(name)] = normalizeValue(value)
-  }
-
-  Headers.prototype.forEach = function(callback, thisArg) {
-    for (var name in this.map) {
-      if (this.map.hasOwnProperty(name)) {
-        callback.call(thisArg, this.map[name], name, this)
-      }
-    }
-  }
-
-  Headers.prototype.keys = function() {
-    var items = []
-    this.forEach(function(value, name) { items.push(name) })
-    return iteratorFor(items)
-  }
-
-  Headers.prototype.values = function() {
-    var items = []
-    this.forEach(function(value) { items.push(value) })
-    return iteratorFor(items)
-  }
-
-  Headers.prototype.entries = function() {
-    var items = []
-    this.forEach(function(value, name) { items.push([name, value]) })
-    return iteratorFor(items)
-  }
-
-  if (support.iterable) {
-    Headers.prototype[Symbol.iterator] = Headers.prototype.entries
-  }
-
-  function consumed(body) {
-    if (body.bodyUsed) {
-      return Promise.reject(new TypeError('Already read'))
-    }
-    body.bodyUsed = true
-  }
-
-  function fileReaderReady(reader) {
-    return new Promise(function(resolve, reject) {
-      reader.onload = function() {
-        resolve(reader.result)
-      }
-      reader.onerror = function() {
-        reject(reader.error)
-      }
-    })
-  }
-
-  function readBlobAsArrayBuffer(blob) {
-    var reader = new FileReader()
-    var promise = fileReaderReady(reader)
-    reader.readAsArrayBuffer(blob)
-    return promise
-  }
-
-  function readBlobAsText(blob) {
-    var reader = new FileReader()
-    var promise = fileReaderReady(reader)
-    reader.readAsText(blob)
-    return promise
-  }
-
-  function readArrayBufferAsText(buf) {
-    var view = new Uint8Array(buf)
-    var chars = new Array(view.length)
-
-    for (var i = 0; i < view.length; i++) {
-      chars[i] = String.fromCharCode(view[i])
-    }
-    return chars.join('')
-  }
-
-  function bufferClone(buf) {
-    if (buf.slice) {
-      return buf.slice(0)
-    } else {
-      var view = new Uint8Array(buf.byteLength)
-      view.set(new Uint8Array(buf))
-      return view.buffer
-    }
-  }
-
-  function Body() {
-    this.bodyUsed = false
-
-    this._initBody = function(body) {
-      this._bodyInit = body
-      if (!body) {
-        this._bodyText = ''
-      } else if (typeof body === 'string') {
-        this._bodyText = body
-      } else if (support.blob && Blob.prototype.isPrototypeOf(body)) {
-        this._bodyBlob = body
-      } else if (support.formData && FormData.prototype.isPrototypeOf(body)) {
-        this._bodyFormData = body
-      } else if (support.searchParams && URLSearchParams.prototype.isPrototypeOf(body)) {
-        this._bodyText = body.toString()
-      } else if (support.arrayBuffer && support.blob && isDataView(body)) {
-        this._bodyArrayBuffer = bufferClone(body.buffer)
-        // IE 10-11 can't handle a DataView body.
-        this._bodyInit = new Blob([this._bodyArrayBuffer])
-      } else if (support.arrayBuffer && (ArrayBuffer.prototype.isPrototypeOf(body) || isArrayBufferView(body))) {
-        this._bodyArrayBuffer = bufferClone(body)
-      } else {
-        throw new Error('unsupported BodyInit type')
-      }
-
-      if (!this.headers.get('content-type')) {
-        if (typeof body === 'string') {
-          this.headers.set('content-type', 'text/plain;charset=UTF-8')
-        } else if (this._bodyBlob && this._bodyBlob.type) {
-          this.headers.set('content-type', this._bodyBlob.type)
-        } else if (support.searchParams && URLSearchParams.prototype.isPrototypeOf(body)) {
-          this.headers.set('content-type', 'application/x-www-form-urlencoded;charset=UTF-8')
-        }
-      }
-    }
-
-    if (support.blob) {
-      this.blob = function() {
-        var rejected = consumed(this)
-        if (rejected) {
-          return rejected
-        }
-
-        if (this._bodyBlob) {
-          return Promise.resolve(this._bodyBlob)
-        } else if (this._bodyArrayBuffer) {
-          return Promise.resolve(new Blob([this._bodyArrayBuffer]))
-        } else if (this._bodyFormData) {
-          throw new Error('could not read FormData body as blob')
-        } else {
-          return Promise.resolve(new Blob([this._bodyText]))
-        }
-      }
-
-      this.arrayBuffer = function() {
-        if (this._bodyArrayBuffer) {
-          return consumed(this) || Promise.resolve(this._bodyArrayBuffer)
-        } else {
-          return this.blob().then(readBlobAsArrayBuffer)
-        }
-      }
-    }
-
-    this.text = function() {
-      var rejected = consumed(this)
-      if (rejected) {
-        return rejected
-      }
-
-      if (this._bodyBlob) {
-        return readBlobAsText(this._bodyBlob)
-      } else if (this._bodyArrayBuffer) {
-        return Promise.resolve(readArrayBufferAsText(this._bodyArrayBuffer))
-      } else if (this._bodyFormData) {
-        throw new Error('could not read FormData body as text')
-      } else {
-        return Promise.resolve(this._bodyText)
-      }
-    }
-
-    if (support.formData) {
-      this.formData = function() {
-        return this.text().then(decode)
-      }
-    }
-
-    this.json = function() {
-      return this.text().then(JSON.parse)
-    }
-
-    return this
-  }
-
-  // HTTP methods whose capitalization should be normalized
-  var methods = ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'POST', 'PUT']
-
-  function normalizeMethod(method) {
-    var upcased = method.toUpperCase()
-    return (methods.indexOf(upcased) > -1) ? upcased : method
-  }
-
-  function Request(input, options) {
-    options = options || {}
-    var body = options.body
-
-    if (input instanceof Request) {
-      if (input.bodyUsed) {
-        throw new TypeError('Already read')
-      }
-      this.url = input.url
-      this.credentials = input.credentials
-      if (!options.headers) {
-        this.headers = new Headers(input.headers)
-      }
-      this.method = input.method
-      this.mode = input.mode
-      if (!body && input._bodyInit != null) {
-        body = input._bodyInit
-        input.bodyUsed = true
-      }
-    } else {
-      this.url = String(input)
-    }
-
-    this.credentials = options.credentials || this.credentials || 'omit'
-    if (options.headers || !this.headers) {
-      this.headers = new Headers(options.headers)
-    }
-    this.method = normalizeMethod(options.method || this.method || 'GET')
-    this.mode = options.mode || this.mode || null
-    this.referrer = null
-
-    if ((this.method === 'GET' || this.method === 'HEAD') && body) {
-      throw new TypeError('Body not allowed for GET or HEAD requests')
-    }
-    this._initBody(body)
-  }
-
-  Request.prototype.clone = function() {
-    return new Request(this, { body: this._bodyInit })
-  }
-
-  function decode(body) {
-    var form = new FormData()
-    body.trim().split('&').forEach(function(bytes) {
-      if (bytes) {
-        var split = bytes.split('=')
-        var name = split.shift().replace(/\+/g, ' ')
-        var value = split.join('=').replace(/\+/g, ' ')
-        form.append(decodeURIComponent(name), decodeURIComponent(value))
-      }
-    })
-    return form
-  }
-
-  function parseHeaders(rawHeaders) {
-    var headers = new Headers()
-    rawHeaders.split(/\r?\n/).forEach(function(line) {
-      var parts = line.split(':')
-      var key = parts.shift().trim()
-      if (key) {
-        var value = parts.join(':').trim()
-        headers.append(key, value)
-      }
-    })
-    return headers
-  }
-
-  Body.call(Request.prototype)
-
-  function Response(bodyInit, options) {
-    if (!options) {
-      options = {}
-    }
-
-    this.type = 'default'
-    this.status = 'status' in options ? options.status : 200
-    this.ok = this.status >= 200 && this.status < 300
-    this.statusText = 'statusText' in options ? options.statusText : 'OK'
-    this.headers = new Headers(options.headers)
-    this.url = options.url || ''
-    this._initBody(bodyInit)
-  }
-
-  Body.call(Response.prototype)
-
-  Response.prototype.clone = function() {
-    return new Response(this._bodyInit, {
-      status: this.status,
-      statusText: this.statusText,
-      headers: new Headers(this.headers),
-      url: this.url
-    })
-  }
-
-  Response.error = function() {
-    var response = new Response(null, {status: 0, statusText: ''})
-    response.type = 'error'
-    return response
-  }
-
-  var redirectStatuses = [301, 302, 303, 307, 308]
-
-  Response.redirect = function(url, status) {
-    if (redirectStatuses.indexOf(status) === -1) {
-      throw new RangeError('Invalid status code')
-    }
-
-    return new Response(null, {status: status, headers: {location: url}})
-  }
-
-  self.Headers = Headers
-  self.Request = Request
-  self.Response = Response
-
-  self.fetch = function(input, init) {
-    return new Promise(function(resolve, reject) {
-      var request = new Request(input, init)
-      var xhr = new XMLHttpRequest()
-
-      xhr.onload = function() {
-        var options = {
-          status: xhr.status,
-          statusText: xhr.statusText,
-          headers: parseHeaders(xhr.getAllResponseHeaders() || '')
-        }
-        options.url = 'responseURL' in xhr ? xhr.responseURL : options.headers.get('X-Request-URL')
-        var body = 'response' in xhr ? xhr.response : xhr.responseText
-        resolve(new Response(body, options))
-      }
-
-      xhr.onerror = function() {
-        reject(new TypeError('Network request failed'))
-      }
-
-      xhr.ontimeout = function() {
-        reject(new TypeError('Network request failed'))
-      }
-
-      xhr.open(request.method, request.url, true)
-
-      if (request.credentials === 'include') {
-        xhr.withCredentials = true
-      }
-
-      if ('responseType' in xhr && support.blob) {
-        xhr.responseType = 'blob'
-      }
-
-      request.headers.forEach(function(value, name) {
-        xhr.setRequestHeader(name, value)
-      })
-
-      xhr.send(typeof request._bodyInit === 'undefined' ? null : request._bodyInit)
-    })
-  }
-  self.fetch.polyfill = true
-})(typeof self !== 'undefined' ? self : this);
-
-},{}],11:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -22956,7 +22446,7 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],12:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -24672,7 +24162,7 @@ function numberIsNaN (obj) {
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":11,"ieee754":13}],13:[function(require,module,exports){
+},{"base64-js":9,"ieee754":11}],11:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1

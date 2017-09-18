@@ -12,14 +12,6 @@
             "cwd": "${workspaceRoot}",
             "sourceMaps": true,
             "outDir": "${workspaceRoot}/lib"
-        },
-        {
-            "type": "node",
-            "name": "Debug Mocha Test",
-            "address": "localhost",
-            "port": 5858,
-            "sourceMaps": true,
-            "outDir": "${workspaceRoot}/lib"
         }
     ]
 }

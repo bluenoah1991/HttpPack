@@ -2,77 +2,62 @@ import Heap from 'heap';
 
 export default class MemoryStorage{
     constructor(){
-        this.uid = 0;
-        this.__packs__ = [];
-        this.index = {};
+        this.nid = 0;
+        this.itemsByIndex = {};
+        this.messages = {};
         this.heap = new Heap(function(a, b){
-            a.confirm = a.confirm || false;
-            b.confirm = b.confirm || false;
-            if(a.confirm && !b.confirm){
+            if(a.isConfirmed){
                 return true;
-            } else if(!a.confirm && b.confirm){
+            } else if(b.isConfirmed){
                 return false;
-            }
-            if(a.timestamp == undefined && b.timestamp != undefined){
-                return true;
-            } else if(a.timestamp != undefined && b.timestamp == undefined){
-                return false;
-            } else if(a.timestamp == undefined && b.timestamp == undefined){
-                return a.msg_id > b.msg_id;
             }
             return a.timestamp > b.timestamp;
         });
-        this.msgs = {};
     }
 
-    // generate global unique id
-    uniqueId(){
-        return ++this.uid;
+    generateId(){
+        return Promise.resolve(++this.nid);
     }
 
-    // insert pack and set timestamp
-    save(pack){
-        pack.confirm = false;
-        this.heap.push(pack);
-        this.index[pack.msg_id] = pack;
+    savePacket(packet){
+        this.heap.push(packet);
+        this.itemsByIndex[packet.identifier] = packet;
+        return Promise.resolve(null);
     }
 
-    // fetch up to limit unconfirmed packs
-    unconfirmed(limit){
-        let packs = [];
+    unconfirmedPacket(limit){
+        let packets = [];
         while(limit > 0){
-            let pack = this.heap.pop();
-            if(pack == undefined){
+            let packet = this.heap.pop();
+            if(packet == undefined){
                 break;
-            } else if(pack.confirm){
+            } else if(packet.isConfirmed){
                 continue;
             } else {
-                packs.push(pack);
+                packets.push(packet);
                 limit--;
             }
         }
-        return packs;
+        return Promise.resolve(packets);
     }
 
-    // confirm and return message
-    confirm(msg_id){
-        let pack = this.index[msg_id];
-        if(pack != undefined){
-            pack.confirm = true;
-            this.heap.updateItem(pack);
+    confirmPacket(identifier){
+        let packet = this.itemsByIndex[identifier];
+        if(packet != undefined){
+            packet.isConfirmed = true;
+            this.heap.updateItem(packet);
         }
-        return pack;
+        return Promise.resolve(packet);
     }
 
-    // receive and storage message
-    receive(msg_id, payload){
-        this.msgs[msg_id] = payload;
+    receivePacket(identifier, payload){
+        this.messages[identifier] = payload;
+        return Promise.resolve(null);
     }
 
-    // release and delete message
-    release(msg_id){
-        let msg = this.msgs[msg_id];
-        delete this.msgs[msg_id];
-        return msg;
+    releasePacket(identifier){
+        let payload = this.messages[identifier];
+        delete this.messages[identifier];
+        return Promise.resolve(payload);
     }
 }
