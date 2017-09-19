@@ -38,12 +38,14 @@ export default class HttpPack {
                 return null;
             } else if(packet.qos == Protocol.QoS1){
                 let replyPacket = Protocol.Encode(Protocol.MSG_TYPE_ACK, Protocol.QoS0, 0, packet.identifier);
+                replyPacket.timestamp = moment().unix();
                 return this.storage.savePacket(replyPacket).then(function(){
                     callback(packet.payload);
                 }.bind(this));
             } else if(packet.qos == Protocol.QoS2){
                 return this.storage.receivePacket(packet.identifier, packet.payload).then(function(){
                     let replyPacket = Protocol.Encode(Protocol.MSG_TYPE_RECEIVED, Protocol.QoS0, 0, packet.identifier);
+                    replyPacket.timestamp = moment().unix();
                     return this.storage.savePacket(replyPacket);
                 }.bind(this));
             }
@@ -52,6 +54,7 @@ export default class HttpPack {
         } else if(packet.msgType == Protocol.MSG_TYPE_RECEIVED){
             return this.storage.confirmPacket(packet.identifier).then(function(){
                 let replyPacket = Protocol.Encode(Protocol.MSG_TYPE_RELEASE, Protocol.QoS1, 0, packet.identifier);
+                replyPacket.timestamp = moment().unix();
                 return this.storage.savePacket(replyPacket);
             }.bind(this));      
         } else if(packet.msgType == Protocol.MSG_TYPE_RELEASE){
@@ -60,6 +63,7 @@ export default class HttpPack {
                     callback(payload);
                 }
                 let replyPacket = Protocol.Encode(Protocol.MSG_TYPE_COMPLETED, Protocol.QoS0, 0, packet.identifier);
+                replyPacket.timestamp = moment().unix();
                 return this.storage.savePacket(replyPacket);
             }.bind(this));
         } else if(packet.msgType == Protocol.MSG_TYPE_COMPLETED){
